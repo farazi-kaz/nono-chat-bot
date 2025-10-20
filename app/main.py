@@ -6,8 +6,11 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from redis import Redis
+import os
 
 from config.config import settings
 from app.ollama_client import OllamaLLM
@@ -37,6 +40,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files
+public_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public")
+if os.path.exists(public_dir):
+    app.mount("/static", StaticFiles(directory=public_dir), name="static")
 
 # Initialize services
 redis_client: Optional[Redis] = None
@@ -95,18 +103,30 @@ async def shutdown_event():
 # Data Models
 # ============================================================================
 
-class ChatRequest(BaseModel):
-    """User message request."""
-    message: str
+class SessionCreateRequest(BaseModel):
+    """Session creation request."""
     user_id: str
 
 
-class ChatResponse(BaseModel):
-    """Assistant response."""
+class SessionCreateResponse(BaseModel):
+    """Session creation response."""
+    session_id: str
+    user_id: str
+    created_at: str
+
+
+class ChatRequestAPI(BaseModel):
+    """Chat request from web interface."""
+    session_id: str
+    user_message: str
+    persona_name: str = "default"
+
+
+class ChatResponseAPI(BaseModel):
+    """Chat response to web interface."""
     response: str
-    user_id: str
+    session_id: str
     timestamp: str
-    tokens_used: Optional[int] = None
 
 
 class SessionStart(BaseModel):
@@ -136,6 +156,97 @@ class HealthCheckResponse(BaseModel):
 # ============================================================================
 # API Endpoints
 # ============================================================================
+
+@app.get("/")
+async def root():
+    """Serve the main chat interface."""
+    public_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public")
+    index_path = os.path.join(public_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
+    raise HTTPException(status_code=404, detail="UI not found")
+
+
+@app.post("/api/session/create", response_model=SessionCreateResponse)
+async def create_session(request: SessionCreateRequest) -> SessionCreateResponse:
+    """Create a new chat session."""
+    if not session_manager:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    
+    session_id = f"session_{request.user_id}_{int(datetime.utcnow().timestamp())}"
+    session_data = session_manager.create_session(
+        request.user_id,
+        "default"
+    )
+    
+    return SessionCreateResponse(
+        session_id=session_id,
+        user_id=request.user_id,
+        created_at=datetime.utcnow().isoformat()
+    )
+
+
+@app.post("/api/chat", response_model=ChatResponseAPI)
+async def chat_api(request: ChatRequestAPI) -> ChatResponseAPI:
+    """Send message and get response via web interface."""
+    if not session_manager or not redis_client or not ollama_client or not persona_manager:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    
+    # Extract user_id from session_id for memory management
+    user_id = request.session_id.split("_")[1] if "_" in request.session_id else "default_user"
+    
+    # Get or create session
+    session_data = session_manager.get_session(user_id)
+    if not session_data:
+        session_data = session_manager.create_session(user_id, "default")
+    
+    persona_key = "default"
+    persona_info = persona_manager.get_persona_info(persona_key) or {
+        "name": "Default",
+        "temperature": 0.7,
+        "max_tokens": 500
+    }
+    system_prompt = persona_manager.get_system_prompt(persona_key) or "You are a helpful assistant."
+    
+    # Get memory
+    memory = ChatMemoryManager(redis_client, user_id)
+    memory.add_message("user", request.user_message)
+    
+    # Build context
+    context = memory.get_context_window()
+    
+    # Prepare prompt
+    if context:
+        full_prompt = f"{context}\n\nUser: {request.user_message}\nAssistant:"
+    else:
+        full_prompt = f"User: {request.user_message}\nAssistant:"
+    
+    try:
+        # Generate response
+        response_text = ollama_client.generate(
+            prompt=full_prompt,
+            system=system_prompt,
+            temperature=persona_info.get("temperature", 0.7),
+            max_tokens=persona_info.get("max_tokens", 500)
+        )
+        
+        # Store response
+        memory.add_message("assistant", response_text)
+        
+        # Update session
+        session_manager.update_session(user_id, {
+            "message_count": memory.redis.llen(memory.history_key) // 2
+        })
+        
+        return ChatResponseAPI(
+            response=response_text,
+            session_id=request.session_id,
+            timestamp=datetime.utcnow().isoformat()
+        )
+    
+    except Exception as e:
+        logger.error(f"Error generating response: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate response: {str(e)}")
 
 @app.get("/health", response_model=HealthCheckResponse)
 async def health_check() -> HealthCheckResponse:
@@ -202,64 +313,10 @@ async def start_session(request: SessionStart) -> SessionInfo:
     )
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
-    """Send message and get response."""
-    if not session_manager or not redis_client or not ollama_client or not persona_manager:
-        raise HTTPException(status_code=503, detail="Service unavailable")
-    
-    # Get or create session
-    session_data = session_manager.get_session(request.user_id)
-    if not session_data:
-        # Auto-create session if doesn't exist
-        session_data = session_manager.create_session(
-            request.user_id,
-            "mental_health_nurse"
-        )
-    
-    persona_key = session_data.get("persona", "mental_health_nurse")
-    persona_info = persona_manager.get_persona_info(persona_key)
-    system_prompt = persona_manager.get_system_prompt(persona_key)
-    
-    # Get memory
-    memory = ChatMemoryManager(redis_client, request.user_id)
-    memory.add_message("user", request.message)
-    
-    # Build context
-    context = memory.get_context_window()
-    
-    # Prepare prompt for LLM
-    if context:
-        full_prompt = f"{context}\n\nUser: {request.message}\nAssistant:"
-    else:
-        full_prompt = f"User: {request.message}\nAssistant:"
-    
-    try:
-        # Generate response
-        response_text = ollama_client.generate(
-            prompt=full_prompt,
-            system=system_prompt,
-            temperature=persona_info.get("temperature", 0.7),
-            max_tokens=persona_info.get("max_tokens", 500)
-        )
-        
-        # Store response
-        memory.add_message("assistant", response_text)
-        
-        # Update session
-        session_manager.update_session(request.user_id, {
-            "message_count": memory.redis.llen(memory.history_key) // 2
-        })
-        
-        return ChatResponse(
-            response=response_text,
-            user_id=request.user_id,
-            timestamp=datetime.utcnow().isoformat()
-        )
-    
-    except Exception as e:
-        logger.error(f"Error generating response: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate response")
+@app.post("/chat")
+async def chat_legacy(request: ChatRequestAPI):
+    """Legacy chat endpoint - redirects to /api/chat."""
+    return await chat_api(request)
 
 
 @app.get("/session/{user_id}/history")
