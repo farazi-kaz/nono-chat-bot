@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Redis Service - Message and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: nono-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass redispass
+    networks:
+      - nono-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      - REDIS_PASSWORD=redispass
+
+  # Ollama Service - Local LLM provider
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nono-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      - nono-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Pull model on start (optional - comment out if model is pre-pulled)
+    # entrypoint: /bin/sh -c "ollama serve & sleep 5 && ollama pull llama2 && wait"
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: nono-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      - FASTAPI_HOST=0.0.0.0
+      - FASTAPI_PORT=8000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - OLLAMA_HOST=http://ollama:11434
+      - MODEL_NAME=llama2
+      - EMBEDDING_MODEL=nomic-embed-text
+      - MAX_CONTEXT_MESSAGES=10
+      - VECTOR_STORE_DIMENSION=384
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - SESSION_TIMEOUT=3600
+      - MAX_SESSIONS_PER_USER=5
+    networks:
+      - nono-network
+    volumes:
+      - ./app:/app/app
+      - ./config:/app/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  nono-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  ollama_data:
