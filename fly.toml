@@ -1,0 +1,56 @@
+# Fly.io Configuration for Nono Chatbot
+app = "nono-chatbot"
+primary_region = "sjc"
+
+[build]
+dockerfile = "Dockerfile"
+
+[env]
+  FASTAPI_HOST = "0.0.0.0"
+  FASTAPI_PORT = "8000"
+  REDIS_HOST = "localhost"
+  REDIS_PORT = "6379"
+  REDIS_DB = "0"
+  MODEL_NAME = "mistral"
+  ENVIRONMENT = "production"
+  LOG_LEVEL = "INFO"
+  SESSION_TIMEOUT = "3600"
+  MAX_SESSIONS_PER_USER = "5"
+  PYTHONUNBUFFERED = "true"
+
+[[services]]
+  internal_port = 8000
+  processes = ["app"]
+  protocol = "tcp"
+  script_checks = []
+
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+    force_https = true
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [[services.tcp_checks]]
+    grace_period = "10s"
+    interval = "15s"
+    timeout = "5s"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+  size = "shared-cpu-1x"
