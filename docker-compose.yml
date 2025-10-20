@@ -33,8 +33,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    # Pull model on start (optional - comment out if model is pre-pulled)
-    # entrypoint: /bin/sh -c "ollama serve & sleep 5 && ollama pull llama2 && wait"
+    # Note: Model was pulled during container startup. Use 'docker exec' to pull more models if needed
 
   # FastAPI Application
   api:
@@ -54,7 +53,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0
       - OLLAMA_HOST=http://ollama:11434
-      - MODEL_NAME=llama2
+      - MODEL_NAME=uandinotai/dolphin-uncensored
       - EMBEDDING_MODEL=nomic-embed-text
       - MAX_CONTEXT_MESSAGES=10
       - VECTOR_STORE_DIMENSION=384
