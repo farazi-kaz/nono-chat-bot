@@ -157,3 +157,27 @@ class SessionManager:
                 break
         
         return active_users
+    
+    def list_sessions_detailed(self) -> list:
+        """List all active sessions with detailed information.
+        
+        Returns:
+            List of session details dictionaries
+        """
+        cursor = 0
+        sessions = []
+        
+        while True:
+            cursor, keys = self.redis.scan(cursor, match="session:*")
+            for key in keys:
+                user_id = key.decode().replace("session:", "")
+                session_data = self.get_session(user_id)
+                if session_data:
+                    # Add session_id for compatibility
+                    session_data['session_id'] = f"session_{user_id}_{int(datetime.utcnow().timestamp())}"
+                    sessions.append(session_data)
+            
+            if cursor == 0:
+                break
+        
+        return sessions

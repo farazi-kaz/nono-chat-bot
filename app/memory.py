@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from redis import Redis
-from langchain.schema import HumanMessage, AIMessage, BaseMessage
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
 logger = logging.getLogger(__name__)
 
@@ -12,22 +12,26 @@ logger = logging.getLogger(__name__)
 class ChatMemoryManager:
     """Manages conversation history and context using Redis."""
     
-    def __init__(self, redis_client: Redis, user_id: str, max_messages: int = 10):
+    def __init__(self, redis_client: Redis, user_id: str, max_messages: int = 10, session_id: Optional[str] = None):
         """Initialize memory manager for a user.
         
         Args:
             redis_client: Redis client instance
             user_id: Unique user identifier
             max_messages: Maximum number of messages to keep in buffer
+            session_id: Optional session identifier (if provided, memory is keyed by session)
         """
         self.redis = redis_client
         self.user_id = user_id
+        self.session_id = session_id
         self.max_messages = max_messages
         
-        # Redis key prefixes
-        self.history_key = f"chat:{user_id}:history"
-        self.metadata_key = f"chat:{user_id}:metadata"
-        self.session_key = f"chat:{user_id}:session"
+        # Redis key prefixes - use session_id if provided for session-specific memory
+        # Otherwise fall back to user_id for backward compatibility
+        memory_key = session_id if session_id else user_id
+        self.history_key = f"chat:{memory_key}:history"
+        self.metadata_key = f"chat:{memory_key}:metadata"
+        self.session_key = f"chat:{memory_key}:session"
     
     def add_message(self, role: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
         """Add a message to conversation history.

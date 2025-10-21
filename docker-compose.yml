@@ -16,24 +16,30 @@ services:
       timeout: 5s
       retries: 5
 
-  # Ollama Service - Local LLM provider
-  ollama:
-    image: ollama/ollama:latest
-    container_name: nono-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0:11434
-    networks:
-      - nono-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Note: Model was pulled during container startup. Use 'docker exec' to pull more models if needed
+  # LM Studio Service - Local LLM provider (OpenAI-compatible API)
+  # NOTE: LM Studio should be run separately as a desktop application
+  # This service is commented out as LM Studio typically runs on the host machine
+  # To use LM Studio with this project:
+  # 1. Install LM Studio from https://lmstudio.ai
+  # 2. Load your desired model in LM Studio
+  # 3. Start the LM Studio server (default: http://localhost:1234)
+  # 4. The API will connect to it automatically
+  #
+  # If you need to run LM Studio in a container, you can use this configuration:
+  # lmstudio:
+  #   image: your-lmstudio-image:latest
+  #   container_name: nono-lmstudio
+  #   ports:
+  #     - "1234:1234"
+  #   volumes:
+  #     - lmstudio_data:/root/.cache/lm-studio
+  #   networks:
+  #     - nono-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:1234/v1/models"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
   # FastAPI Application
   api:
@@ -52,9 +58,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - OLLAMA_HOST=http://ollama:11434
-      - MODEL_NAME=uandinotai/dolphin-uncensored
-      - EMBEDDING_MODEL=nomic-embed-text
+      - LMSTUDIO_HOST=http://host.docker.internal:1234
+      - MODEL_NAME=local-model
+      - EMBEDDING_MODEL=local-model
       - MAX_CONTEXT_MESSAGES=10
       - VECTOR_STORE_DIMENSION=384
       - ENVIRONMENT=production
@@ -80,4 +86,4 @@ networks:
 
 volumes:
   redis_data:
-  ollama_data:
+  # lmstudio_data:  # Uncomment if using LM Studio in container

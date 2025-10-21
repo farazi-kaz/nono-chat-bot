@@ -222,13 +222,255 @@
                 opacity: 1;
             }
         }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .header-controls button {
+            padding: 8px 16px;
+            font-size: 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .header-controls button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.active {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-close {
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-close:hover {
+            color: #000;
+            background: none;
+            box-shadow: none;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            font-size: 14px;
+        }
+
+        .modal-buttons .cancel-btn {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .modal-buttons .cancel-btn:hover {
+            background: #d0d0d0;
+            box-shadow: none;
+        }
+
+        .sessions-list {
+            margin-bottom: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+
+        .session-item {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .session-item:hover {
+            background: #f9f9f9;
+        }
+
+        .session-item.active {
+            background: #e8f0ff;
+            border-left: 3px solid #667eea;
+            padding-left: 9px;
+        }
+
+        .session-item-text {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .session-item-time {
+            font-size: 12px;
+            color: #999;
+            margin-top: 3px;
+        }
+
+        .sessions-empty {
+            padding: 20px;
+            text-align: center;
+            color: #999;
+            font-size: 13px;
+        }
+
+        .header-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-id-display {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-right: auto;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px;
+        }
     </style>
 </head>
 <body>
+    <!-- New Session Modal -->
+    <div id="newSessionModal" class="modal">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div class="modal-header" style="margin: 0;">Create New Session</div>
+                <button class="modal-close" onclick="closeNewSessionModal()">&times;</button>
+            </div>
+            <form onsubmit="createNewSession(event)">
+                <div class="form-group">
+                    <label for="sessionUserName">Display Name (optional)</label>
+                    <input type="text" id="sessionUserName" placeholder="e.g., John Doe">
+                </div>
+                <div class="form-group">
+                    <label for="sessionPersona">Persona</label>
+                    <select id="sessionPersona">
+                        <option value="default">Default Assistant</option>
+                        <option value="mental_health_nurse">Mental Health Nurse</option>
+                        <option value="technical_support">Technical Support</option>
+                        <option value="creative_writer">Creative Writer</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="cancel-btn" onclick="closeNewSessionModal()">Cancel</button>
+                    <button type="submit">Create Session</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Manage Sessions Modal -->
+    <div id="manageSessionsModal" class="modal">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div class="modal-header" style="margin: 0;">My Sessions</div>
+                <button class="modal-close" onclick="closeManageSessionsModal()">&times;</button>
+            </div>
+            <div id="sessionsList" class="sessions-list">
+                <div class="sessions-empty">No sessions yet</div>
+            </div>
+            <div class="modal-buttons">
+                <button onclick="openNewSessionModal()" style="margin-bottom: 0;">New Session</button>
+                <button type="button" class="cancel-btn" onclick="closeManageSessionsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
-            <h1>🤖 Nono Chat Bot</h1>
-            <p>Powered by Ollama & FastAPI</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div style="flex: 1;">
+                    <h1>Nono Chat Bot</h1>
+                    <p>Powered by Ollama & FastAPI</p>
+                </div>
+                <div class="header-controls">
+                    <div class="user-id-display" id="userIdDisplay">User: Loading...</div>
+                    <button id="newSessionBtn" onclick="openNewSessionModal()" title="Create New Session">➕ New</button>
+                    <button id="sessionsBtn" onclick="openManageSessionsModal()" title="Manage Sessions">📋 Sessions</button>
+                </div>
+            </div>
         </div>
 
         <div class="chat-area" id="chatArea">
@@ -257,31 +499,182 @@
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
         const sessionIdSpan = document.getElementById('sessionId');
+        const userIdDisplay = document.getElementById('userIdDisplay');
         
         let sessionId = null;
+        let userId = null;
+        let sessionList = [];
         let isLoading = false;
+        const API_BASE_URL = 'http://localhost:8000';
 
-        // Initialize session
-        async function initSession() {
+        // Modal Functions
+        function openNewSessionModal() {
+            document.getElementById('newSessionModal').classList.add('active');
+        }
+
+        function closeNewSessionModal() {
+            document.getElementById('newSessionModal').classList.remove('active');
+            document.getElementById('sessionUserName').value = '';
+            document.getElementById('sessionPersona').value = 'default';
+        }
+
+        function openManageSessionsModal() {
+            document.getElementById('manageSessionsModal').classList.add('active');
+            loadSessionsList();
+        }
+
+        function closeManageSessionsModal() {
+            document.getElementById('manageSessionsModal').classList.remove('active');
+        }
+
+        // Session Management
+        async function createNewSession(event) {
+            event.preventDefault();
+            
+            const displayName = document.getElementById('sessionUserName').value || `User_${Date.now()}`;
+            const persona = document.getElementById('sessionPersona').value;
+            
             try {
-                const response = await fetch('http://localhost:8000/api/session/create', {
+                const response = await fetch(`${API_BASE_URL}/api/session/create`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ user_id: 'user_' + Date.now() })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: displayName,
+                        persona: persona,
+                        metadata: { created_at: new Date().toISOString() }
+                    })
                 });
 
                 if (response.ok) {
                     const data = await response.json();
                     sessionId = data.session_id;
+                    userId = data.user_id;
                     sessionIdSpan.textContent = sessionId;
-                    showMessage('bot', 'Session initialized! How can I help you today?');
+                    userIdDisplay.textContent = `User: ${userId}`;
+                    
+                    // Clear chat area and add welcome message
+                    chatArea.innerHTML = `
+                        <div class="info-message">
+                            ✨ New session created successfully!<br>
+                            <strong>Session ID:</strong> ${sessionId}<br>
+                            <strong>Persona:</strong> ${persona}<br><br>
+                            Type a message and press Enter or click Send to chat.
+                        </div>
+                    `;
+                    
+                    closeNewSessionModal();
+                    messageInput.focus();
+                    loadSessionsList();
+                } else {
+                    alert('Error: Could not create session.');
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+                console.error('Session creation error:', error);
+            }
+        }
+
+        async function loadSessionsList() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/sessions`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    sessionList = data.sessions || [];
+                    displaySessionsList();
+                }
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+            }
+        }
+
+        function displaySessionsList() {
+            const sessionsList = document.getElementById('sessionsList');
+            
+            if (sessionList.length === 0) {
+                sessionsList.innerHTML = '<div class="sessions-empty">No sessions yet. Create one to get started!</div>';
+                return;
+            }
+
+            sessionsList.innerHTML = sessionList.map(session => `
+                <div class="session-item ${session.session_id === sessionId ? 'active' : ''}" 
+                     onclick="switchSession('${session.session_id}', '${session.user_id}', '${session.persona}')">
+                    <div style="font-weight: 500; color: #333;">${session.user_id}</div>
+                    <div class="session-item-text">Persona: ${session.persona}</div>
+                    <div class="session-item-time">Created: ${new Date(session.created_at).toLocaleString()}</div>
+                </div>
+            `).join('');
+        }
+
+        async function switchSession(newSessionId, newUserId, persona) {
+            sessionId = newSessionId;
+            userId = newUserId;
+            sessionIdSpan.textContent = sessionId;
+            userIdDisplay.textContent = `User: ${userId}`;
+            
+            // Clear chat and load session history
+            chatArea.innerHTML = `
+                <div class="info-message">
+                    📋 Session switched to ${userId}<br>
+                    <strong>Session ID:</strong> ${sessionId}<br>
+                    <strong>Persona:</strong> ${persona}
+                </div>
+            `;
+            
+            // Load chat history
+            await loadChatHistory();
+            displaySessionsList();
+            closeManageSessionsModal();
+            messageInput.focus();
+        }
+
+        async function loadChatHistory() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/session/${userId}/history?session_id=${sessionId}`, {
+                    method: 'GET'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const messages = data.messages || [];
+                    
+                    if (messages.length > 0) {
+                        messages.forEach(msg => {
+                            addMessage(msg.role === 'user' ? 'user' : 'bot', msg.content);
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading chat history:', error);
+            }
+        }
+
+        // Initialize session
+        async function initSession() {
+            try {
+                // Create initial session
+                const initialUserId = 'user_' + Date.now();
+                const response = await fetch(`${API_BASE_URL}/api/session/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: initialUserId })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    sessionId = data.session_id;
+                    userId = data.user_id;
+                    sessionIdSpan.textContent = sessionId;
+                    userIdDisplay.textContent = `User: ${userId}`;
+                    showMessage('bot', '👋 Welcome! How can I help you today? You can create a new session using the ➕ button or manage existing sessions with 📋.');
                 } else {
                     showMessage('bot', 'Error: Could not initialize session.');
                 }
             } catch (error) {
-                showMessage('bot', 'Error connecting to server. Make sure the FastAPI server is running on http://localhost:8000');
+                showMessage('bot', 'Error connecting to server. Make sure the FastAPI server is running on ' + API_BASE_URL);
                 console.error('Session init error:', error);
             }
         }
@@ -344,11 +737,9 @@
             showLoading();
 
             try {
-                const response = await fetch('http://localhost:8000/api/chat', {
+                const response = await fetch(`${API_BASE_URL}/api/chat`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         session_id: sessionId,
                         user_message: message,
@@ -375,6 +766,19 @@
                 messageInput.focus();
             }
         }
+
+        // Close modals when clicking outside
+        window.addEventListener('click', (e) => {
+            const newSessionModal = document.getElementById('newSessionModal');
+            const manageSessionsModal = document.getElementById('manageSessionsModal');
+            
+            if (e.target === newSessionModal) {
+                closeNewSessionModal();
+            }
+            if (e.target === manageSessionsModal) {
+                closeManageSessionsModal();
+            }
+        });
 
         // Allow Enter key to send message
         messageInput.addEventListener('keypress', (e) => {

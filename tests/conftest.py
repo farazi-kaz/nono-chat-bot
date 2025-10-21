@@ -10,8 +10,8 @@ def mock_redis():
 
 
 @pytest.fixture
-def mock_ollama():
-    """Create mock Ollama client for testing."""
+def mock_lmstudio():
+    """Create mock LM Studio client for testing."""
     return MagicMock()
 
 

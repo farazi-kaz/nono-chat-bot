@@ -13,7 +13,7 @@ from redis import Redis
 import os
 
 from config.config import settings
-from app.ollama_client import OllamaLLM
+from app.lmstudio_client import LMStudioLLM
 from app.memory import ChatMemoryManager
 from app.session import SessionManager
 from app.persona import PersonaManager
@@ -48,7 +48,7 @@ if os.path.exists(public_dir):
 
 # Initialize services
 redis_client: Optional[Redis] = None
-ollama_client: Optional[OllamaLLM] = None
+lmstudio_client: Optional[LMStudioLLM] = None
 session_manager: Optional[SessionManager] = None
 persona_manager: Optional[PersonaManager] = None
 
@@ -60,7 +60,7 @@ persona_manager: Optional[PersonaManager] = None
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on application startup."""
-    global redis_client, ollama_client, session_manager, persona_manager
+    global redis_client, lmstudio_client, session_manager, persona_manager
     
     try:
         # Connect to Redis
@@ -72,14 +72,14 @@ async def startup_event():
         raise
     
     try:
-        # Initialize Ollama client
-        ollama_client = OllamaLLM(settings.ollama_host, settings.model_name)
-        if not ollama_client.health_check():
-            logger.warning("Ollama service not responding, but continuing startup")
+        # Initialize LM Studio client
+        lmstudio_client = LMStudioLLM(settings.lmstudio_host, settings.model_name)
+        if not lmstudio_client.health_check():
+            logger.warning("LM Studio service not responding, but continuing startup")
         else:
-            logger.info(f"Connected to Ollama: {settings.model_name}")
+            logger.info(f"Connected to LM Studio: {settings.model_name}")
     except Exception as e:
-        logger.error(f"Failed to initialize Ollama: {e}")
+        logger.error(f"Failed to initialize LM Studio: {e}")
         raise
     
     # Initialize session manager
@@ -106,6 +106,8 @@ async def shutdown_event():
 class SessionCreateRequest(BaseModel):
     """Session creation request."""
     user_id: str
+    persona: str = "default"
+    metadata: Optional[dict] = None
 
 
 class SessionCreateResponse(BaseModel):
@@ -113,6 +115,22 @@ class SessionCreateResponse(BaseModel):
     session_id: str
     user_id: str
     created_at: str
+    persona: str = "default"
+
+
+class SessionListItem(BaseModel):
+    """Session item for listing."""
+    session_id: str
+    user_id: str
+    persona: str
+    created_at: str
+    last_activity: str
+    message_count: int
+
+
+class SessionListResponse(BaseModel):
+    """Session list response."""
+    sessions: list
 
 
 class ChatRequestAPI(BaseModel):
@@ -149,7 +167,7 @@ class HealthCheckResponse(BaseModel):
     """Health check response."""
     status: str
     redis: bool
-    ollama: bool
+    lmstudio: bool
     timestamp: str
 
 
@@ -176,23 +194,25 @@ async def create_session(request: SessionCreateRequest) -> SessionCreateResponse
     session_id = f"session_{request.user_id}_{int(datetime.utcnow().timestamp())}"
     session_data = session_manager.create_session(
         request.user_id,
-        "default"
+        request.persona,
+        request.metadata
     )
     
     return SessionCreateResponse(
         session_id=session_id,
         user_id=request.user_id,
-        created_at=datetime.utcnow().isoformat()
+        created_at=datetime.utcnow().isoformat(),
+        persona=request.persona
     )
 
 
 @app.post("/api/chat", response_model=ChatResponseAPI)
 async def chat_api(request: ChatRequestAPI) -> ChatResponseAPI:
     """Send message and get response via web interface."""
-    if not session_manager or not redis_client or not ollama_client or not persona_manager:
+    if not session_manager or not redis_client or not lmstudio_client or not persona_manager:
         raise HTTPException(status_code=503, detail="Service unavailable")
     
-    # Extract user_id from session_id for memory management
+    # Extract user_id from session_id for session management
     user_id = request.session_id.split("_")[1] if "_" in request.session_id else "default_user"
     
     # Get or create session
@@ -200,7 +220,7 @@ async def chat_api(request: ChatRequestAPI) -> ChatResponseAPI:
     if not session_data:
         session_data = session_manager.create_session(user_id, "default")
     
-    persona_key = "default"
+    persona_key = request.persona_name if hasattr(request, 'persona_name') and request.persona_name else "default"
     persona_info = persona_manager.get_persona_info(persona_key) or {
         "name": "Default",
         "temperature": 0.7,
@@ -208,8 +228,8 @@ async def chat_api(request: ChatRequestAPI) -> ChatResponseAPI:
     }
     system_prompt = persona_manager.get_system_prompt(persona_key) or "You are a helpful assistant."
     
-    # Get memory
-    memory = ChatMemoryManager(redis_client, user_id)
+    # Get memory - keyed by session_id for session-specific isolation
+    memory = ChatMemoryManager(redis_client, user_id, session_id=request.session_id)
     memory.add_message("user", request.user_message)
     
     # Build context
@@ -223,7 +243,7 @@ async def chat_api(request: ChatRequestAPI) -> ChatResponseAPI:
     
     try:
         # Generate response
-        response_text = ollama_client.generate(
+        response_text = lmstudio_client.generate(
             prompt=full_prompt,
             system=system_prompt,
             temperature=persona_info.get("temperature", 0.7),
@@ -248,11 +268,32 @@ async def chat_api(request: ChatRequestAPI) -> ChatResponseAPI:
         logger.error(f"Error generating response: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate response: {str(e)}")
 
+
+@app.get("/api/sessions")
+async def list_sessions():
+    """List all active sessions for the current user."""
+    if not session_manager:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    
+    try:
+        sessions = session_manager.list_sessions_detailed()
+        return {
+            "sessions": sessions,
+            "count": len(sessions)
+        }
+    except Exception as e:
+        logger.error(f"Error listing sessions: {e}")
+        return {
+            "sessions": [],
+            "count": 0
+        }
+
+
 @app.get("/health", response_model=HealthCheckResponse)
 async def health_check() -> HealthCheckResponse:
     """Health check endpoint for all services."""
     redis_ok = False
-    ollama_ok = False
+    lmstudio_ok = False
     
     try:
         if redis_client:
@@ -262,17 +303,17 @@ async def health_check() -> HealthCheckResponse:
         logger.warning(f"Redis health check failed: {e}")
     
     try:
-        if ollama_client:
-            ollama_ok = ollama_client.health_check()
+        if lmstudio_client:
+            lmstudio_ok = lmstudio_client.health_check()
     except Exception as e:
-        logger.warning(f"Ollama health check failed: {e}")
+        logger.warning(f"LM Studio health check failed: {e}")
     
-    status = "healthy" if (redis_ok and ollama_ok) else "degraded"
+    status = "healthy" if (redis_ok and lmstudio_ok) else "degraded"
     
     return HealthCheckResponse(
         status=status,
         redis=redis_ok,
-        ollama=ollama_ok,
+        lmstudio=lmstudio_ok,
         timestamp=datetime.utcnow().isoformat()
     )
 
@@ -320,33 +361,36 @@ async def chat_legacy(request: ChatRequestAPI):
 
 
 @app.get("/session/{user_id}/history")
-async def get_history(user_id: str):
-    """Get conversation history for user."""
+async def get_history(user_id: str, session_id: Optional[str] = None):
+    """Get conversation history for user session."""
     if not redis_client:
         raise HTTPException(status_code=503, detail="Service unavailable")
     
-    memory = ChatMemoryManager(redis_client, user_id)
+    # Use session_id if provided for session-specific history, otherwise fall back to user_id
+    memory = ChatMemoryManager(redis_client, user_id, session_id=session_id)
     messages = memory.get_messages()
     
     return {
         "user_id": user_id,
+        "session_id": session_id,
         "message_count": len(messages),
         "messages": messages
     }
 
 
 @app.delete("/session/{user_id}/clear")
-async def clear_session(user_id: str):
+async def clear_session(user_id: str, session_id: Optional[str] = None):
     """Clear user session and history."""
     if not session_manager or not redis_client:
         raise HTTPException(status_code=503, detail="Service unavailable")
     
-    # Clear memory
-    memory = ChatMemoryManager(redis_client, user_id)
+    # Clear memory - use session_id if provided for session-specific clearing
+    memory = ChatMemoryManager(redis_client, user_id, session_id=session_id)
     memory.clear_history()
     
-    # Delete session
-    session_manager.delete_session(user_id)
+    # Delete session if no session_id specified (legacy behavior)
+    if not session_id:
+        session_manager.delete_session(user_id)
     
     return {"status": "success", "message": f"Session cleared for user {user_id}"}
 
@@ -382,7 +426,7 @@ async def list_active_sessions():
 @app.websocket("/ws/chat/{user_id}")
 async def websocket_chat(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for streaming responses."""
-    if not session_manager or not redis_client or not ollama_client or not persona_manager:
+    if not session_manager or not redis_client or not lmstudio_client or not persona_manager:
         await websocket.close(code=1008, reason="Service unavailable")
         return
     
@@ -419,7 +463,7 @@ async def websocket_chat(websocket: WebSocket, user_id: str):
             
             # Stream response
             try:
-                for chunk in ollama_client.generate_stream(
+                for chunk in lmstudio_client.generate_stream(
                     prompt=full_prompt,
                     system=system_prompt,
                     temperature=persona_info.get("temperature", 0.7),
@@ -432,7 +476,7 @@ async def websocket_chat(websocket: WebSocket, user_id: str):
                 
                 # Collect full response
                 response_text = ""
-                for chunk in ollama_client.generate_stream(
+                for chunk in lmstudio_client.generate_stream(
                     prompt=full_prompt,
                     system=system_prompt,
                     temperature=persona_info.get("temperature", 0.7),

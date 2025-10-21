@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 # Mock imports before creating app
 with patch('app.main.Redis'):
-    with patch('app.main.OllamaLLM'):
+    with patch('app.main.LMStudioLLM'):
         with patch('app.main.SessionManager'):
             with patch('app.main.PersonaManager'):
                 from app.main import app
@@ -89,7 +89,7 @@ def test_chat_endpoint(client):
     """Test chat endpoint."""
     with patch('app.main.session_manager') as mock_sm, \
          patch('app.main.redis_client') as mock_redis, \
-         patch('app.main.ollama_client') as mock_ollama, \
+         patch('app.main.lmstudio_client') as mock_lmstudio, \
          patch('app.main.persona_manager') as mock_pm, \
          patch('app.main.ChatMemoryManager') as mock_memory_class:
         
@@ -109,7 +109,7 @@ def test_chat_endpoint(client):
         mock_memory.get_context_window.return_value = ""
         mock_memory_class.return_value = mock_memory
         
-        mock_ollama.generate.return_value = "Hello! I'm here to help."
+        mock_lmstudio.generate.return_value = "Hello! I'm here to help."
         mock_redis.llen.return_value = 2
         
         payload = {

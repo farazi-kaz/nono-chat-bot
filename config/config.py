@@ -15,10 +15,13 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_db: int = 0
     
-    # Ollama Configuration
+    # LM Studio Configuration
+    lmstudio_host: str = "http://localhost:1234"
+    model_name: str = "local-model"
+    embedding_model: str = "local-model"
+    
+    # Legacy Ollama Configuration (deprecated, kept for backward compatibility)
     ollama_host: str = "http://localhost:11434"
-    model_name: str = "llama2"
-    embedding_model: str = "nomic-embed-text"
     
     # Chat Configuration
     max_context_messages: int = 10
